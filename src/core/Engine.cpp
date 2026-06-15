@@ -342,13 +342,15 @@ void Engine::Run()
         
         // Dynamic Play/Stop Button
         if (player.IsPlaying()) {
-            if (ImGui::Button("PAUSE", ImVec2(120, 50))) 
-            player.Stop();
-            isUserPaused = true; // Tell the engine this was intentional!
+            if (ImGui::Button("PAUSE", ImVec2(120, 50))) {
+                player.Stop();
+                isUserPaused = true; // Tell the engine this was intentional!
+            }
         } else {
-            if (ImGui::Button("PLAY", ImVec2(120, 50))) 
-            player.Play();
-            isUserPaused = false; // Music is running naturally again
+            if (ImGui::Button("PLAY", ImVec2(120, 50))) {
+                player.Play();
+                isUserPaused = false; // Music is running naturally again
+            }
         }
         
         ImGui::SameLine();
