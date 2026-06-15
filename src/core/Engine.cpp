@@ -221,11 +221,29 @@ void Engine::Run()
         size_t binsPerBar = usableBins / DISPLAY_BARS;
 
         // ==========================================
-        // NEW: DYNAMICALLY CENTER THE AUDIO BARS
+        // OLD: DYNAMICALLY CENTER THE AUDIO BARS
         // ==========================================
-        float barSpacing = 65.0f;
-        float totalBarsWidth = (DISPLAY_BARS - 1) * barSpacing;
+        // float barSpacing = 65.0f;
+        // float totalBarsWidth = (DISPLAY_BARS - 1) * barSpacing;
         // This ENSURES the entire block of 16 bars stays in the exact middle of the screen.
+        // float startPosX = (viewportSize.x - totalBarsWidth) * 0.5f;
+
+        // ==========================================
+        // New: TRUE RESPONSIVE MATH (PERCENTAGES)
+        // ==========================================
+        // 1. Dynamic Width: THE VISUALIZER takes up 80% of the window width
+        float maxAvailableWidth = viewportSize.x * 0.8f;
+
+        // PUT a cap on it so it doesn't scretch too far on ultra-wide monitors
+        if (maxAvailableWidth > 1200.0f) maxAvailableWidth = 1200.0f;
+
+        // Divide the available space evenly
+        float barSpacing = maxAvailableWidth / DISPLAY_BARS;
+
+        // THE BAR takes up 55% of its given slot, leaving a 45% empty cap
+        float barWidth = barSpacing * 0.55f;
+
+        float totalBarsWidth = (DISPLAY_BARS - 1) * barSpacing + barWidth;
         float startPosX = (viewportSize.x - totalBarsWidth) * 0.5f;
 
         // ==========================================
@@ -273,19 +291,19 @@ void Engine::Run()
             }
 
             // ==========================================
-            // THE FIX: DRAW BARS USING IMGUI
+            // NEW: DYNAMIC BAR HEIGHTS & ANCHORING
             // ==========================================
-            float barWidth = 30.0f; // Thickness of the bars
-            float maxBarHeight = 350.0f; // Maximum height in pixels
-            
-            // VERY IMPORTANT: Multiply by 'smoothHeights[b]' instead of the raw target!
+            // 2. DYNAMIC HEIGHT: Bars can grow up to 45% of the window's total height
+            float maxBarHeight = viewportSize.y * 0.45f;
             float actualHeight = smoothHeights[b] * maxBarHeight;
-            if (actualHeight < 15.0f) actualHeight = 15.0f; // Minimum height when paused or quiet
 
+            // 3. MINIMUM HEIGHT: Even the quiet data "resting dots" scale down on tiny screens
+            float minHeight = viewportSize.y * 0.02f;
+            if (actualHeight < minHeight) actualHeight = minHeight;
             float xPixelPos = startPosX + (b * barSpacing);
-            
-            // Anchor the bars visually to the center of the screen
-            float bottomY = viewportSize.y - 180.0f; 
+
+            // 4. DYNAMIC Y-ANCHOR: Pin the bottom of the bars precisely 75% down the screen
+            float bottomY = viewportSize.y * 0.75f; 
             float topY = bottomY - actualHeight;
 
             // Paint the bars OVER the gradient, with built-in rounded corners!
