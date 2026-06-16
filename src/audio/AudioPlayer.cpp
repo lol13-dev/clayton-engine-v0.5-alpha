@@ -34,6 +34,18 @@ void AudioDataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma
             framesRead * pDevice->playback.channels
         );
     }
+
+    // 4. SOFTWARE VOLUME OVERDRIVE (Add this right after reading frames)
+    // Step 1. Cast the raw memory into an array of readable floats
+    float* pFloatOutput = (float*)pOutput;
+    
+    // Step 2. Calculate the total number of audio samples (Frames * 2 for Stereo)
+    size_t totalSamples = framesRead * pDevice->playback.channels;
+    
+    // Step 3. Multiply every single sample by our volume slider!
+    for (size_t i = 0; i < totalSamples; i++) {
+        pFloatOutput[i] *= player->m_Volume; 
+    }
 }
 
 // ==========================================================
@@ -94,6 +106,20 @@ bool AudioPlayer::Load(const std::string &filename) {
     m_CurrentSong = filename;
     std::cout << "[SUCCESS] Loaded asset stream: " << filename << "\n";
     return true;
+}
+
+// =====================================
+// SET MASTER VOLUME (Supports up to 200%)
+// =====================================
+void AudioPlayer::SetVolume(float volume) {
+    // [C++ LEARNING] miniaudio uses ma_sound_set_volume. 
+    // It accepts a float multiplier (1.0 = normal, 0.5 = half, 2.0 = double!)
+    // NOTE: Make sure your internal sound object is named 'sound' or 'm_sound'. Update if needed!
+    // ma_device_set_master_volume(&m_Device, volume);
+
+    // [C++ LEARNING] We abandon the hardware OS volume because Macs block it.
+    // Instead, we save the slider value here so our callback can use it!
+    m_Volume = volume;
 }
 
 void AudioPlayer::Play() {

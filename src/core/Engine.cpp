@@ -75,9 +75,9 @@ void Engine::Run()
     }
 
     // PRINT a clean interative console selector.
-    std::cout << "================================================\n";
-    std::cout << "   CLAYTON ENGINE (ALPHA) PLAYLIST SELECTOR     \n";
-    std::cout << "================================================\n";
+    std::cout << "==================================================\n";
+    std::cout << "=   Clayton Engine v0.6 Alpha PLAYLIST SELECTOR  =\n";
+    std::cout << "==================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
         // EXTRACT just filename for a clear display look.
@@ -153,6 +153,9 @@ void Engine::Run()
 
     // NEW: Remembers if the user intentionally paused the music
     bool isUserPaused = false;
+
+    // 1.0f is 100% volume. 2.0f allows the user to overdrive the audio to 200%!
+    float currentVolume = 1.0f;
 
     //------------------------------------
     // UPDATE 1: Window-Controlled Loop
@@ -335,7 +338,7 @@ void Engine::Run()
         // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
         // ==========================================
         float pillWidth = 500.0f;
-        float pillHeight = 80.0f;
+        float pillHeight = 110.0f;
 
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
         float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
@@ -379,6 +382,8 @@ void Engine::Run()
             // [C++ LEARNING] Reloading the path forces the audio buffer back to 0:00!
             // Now when you hit PLAY next, it will start from the very beginning.
             player.Load(selectedTrackPath); 
+            // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+            player.SetVolume(currentVolume);
             isUserPaused = true;
 
             for (size_t i = 0; i < frozenFrequencies.size(); i++) {
@@ -390,13 +395,17 @@ void Engine::Run()
         
         // ==================== Dynamic Play/Stop Button ====================
         if (player.IsPlaying()) {
-            if (ImGui::Button("PAUSE", ImVec2(120, 50))) {
+            if (ImGui::Button("PAUSE", ImVec2(90, 50))) {
                 player.Stop();
+                // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+                player.SetVolume(currentVolume);
                 isUserPaused = true; // Tell the engine this was intentional!
             }
         } else {
-            if (ImGui::Button("PLAY", ImVec2(120, 50))) {
+            if (ImGui::Button("PLAY", ImVec2(90, 50))) {
                 player.Play();
+                // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+                player.SetVolume(currentVolume);
                 isUserPaused = false; // Music is running naturally again
             }
         }
@@ -411,10 +420,28 @@ void Engine::Run()
             selectedTrackPath = playlist[currentTrackIndex];
             cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
             player.Load(selectedTrackPath);
+            // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+            player.SetVolume(currentVolume);
             player.Play();
             isUserPaused = false;
         }
 
+        // ============= VOLUME OVERDRIVE SLIDER ================
+        // Move the "cursor" down to Y: 75 so it sits nicely under the buttons.
+        // We keep X: 70 so its left edge aligns perfectly with the 'Prev' button.
+        ImGui::SetCursorPos(ImVec2(70.0f, 75.0f));
+
+        // PushItemWidth locks the slider's length to exactly 360 pixels 
+        // so it perfectly matches the width of the 4 buttons above it!
+        ImGui::PushItemWidth(360.0f);
+
+        // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
+        if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, "Volume: %.2fx")){
+            // When the USER drags the slider, this BLOCKS TRIGGERS!
+            player.SetVolume(currentVolume);
+        }
+
+        ImGui::PopItemWidth();
         ImGui::PopStyleVar();
         ImGui::End();
 
