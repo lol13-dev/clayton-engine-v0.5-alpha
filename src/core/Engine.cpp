@@ -221,17 +221,9 @@ void Engine::Run()
         size_t binsPerBar = usableBins / DISPLAY_BARS;
 
         // ==========================================
-        // OLD: DYNAMICALLY CENTER THE AUDIO BARS
-        // ==========================================
-        // float barSpacing = 65.0f;
-        // float totalBarsWidth = (DISPLAY_BARS - 1) * barSpacing;
-        // This ENSURES the entire block of 16 bars stays in the exact middle of the screen.
-        // float startPosX = (viewportSize.x - totalBarsWidth) * 0.5f;
-
-        // ==========================================
         // New: TRUE RESPONSIVE MATH (PERCENTAGES)
         // ==========================================
-        // 1. Dynamic Width: THE VISUALIZER takes up 80% of the window width
+        // Dynamic Width: THE VISUALIZER takes up 80% of the window width
         float maxAvailableWidth = viewportSize.x * 0.8f;
 
         // PUT a cap on it so it doesn't scretch too far on ultra-wide monitors
@@ -307,10 +299,14 @@ void Engine::Run()
             float topY = bottomY - actualHeight;
 
             // Paint the bars OVER the gradient, with built-in rounded corners!
+            float hue = 0.5f - (smoothHeights[b] * 0.5f);
+            if (hue < 0.0f) hue = 0.0f; // CLAMP it just in case.
+            ImU32 dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
+
             ImGui::GetBackgroundDrawList()->AddRectFilled(
                 ImVec2(xPixelPos, topY),
                 ImVec2(xPixelPos + barWidth, bottomY),
-                IM_COL32(0, 229, 255, 255), // Vibrant Cyan (#00E5FF)
+                dynamicColor, // Vibrant Cyan (#00E5FF)
                 15.0f // Perfectly rounded caps!
             );
         }
