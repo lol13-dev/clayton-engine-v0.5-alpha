@@ -274,8 +274,8 @@ void Engine::Run()
             // THE UNIVERSAL FIX: ASYMMETRIC LEEPING  (ATTACK OR DELAY)
             // ==========================================
             // This setup works perfectly for EDM, Classical, Jazz, and Rock automatically.
-            float attackFactor = 0.85f;
-            float decayFactor = 0.15f;
+            float attackFactor = 0.40f;
+            float decayFactor = 0.06f;
 
             if (targetHeight > smoothHeights[b]) {
                 smoothHeights[b] += (targetHeight - smoothHeights[b]) * attackFactor;
@@ -334,7 +334,7 @@ void Engine::Run()
         // ==========================================
         // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
         // ==========================================
-        float pillWidth = 395.0f;
+        float pillWidth = 500.0f;
         float pillHeight = 80.0f;
 
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
@@ -345,10 +345,14 @@ void Engine::Run()
         ImGui::SetNextWindowSize(ImVec2(pillWidth, pillHeight));
 
         // Create a dark, rounded window container
-        ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+        ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
         
         // Center the buttons inside the pill
-        ImGui::SetCursorPos(ImVec2(15, 15)); 
+        // float centerOffSet = (pillWidth - 354.0f) * 0.5f; <- STILL NOT WORKING
+        ImGui::SetCursorPos(ImVec2(70.0f, 15.0f)); 
+        // [C++ LEARNING] 'PushStyleVar' changes the internal ImGui drawing rules.
+        // 'FrameRounding, 10.0f' curves the corners of every button drawn after this line!
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
 
         // ==================== PREV BUTTON ====================
         if (ImGui::Button("Prev", ImVec2(80, 50))) {
@@ -361,7 +365,28 @@ void Engine::Run()
             player.Play();
             isUserPaused = true;
         }
-        ImGui::SameLine();
+
+        // [C++ LEARNING] Forces exactly 10 pixels of space between buttons
+        ImGui::SameLine(0.0f, 10.0f);
+
+        // ==================== STOP BUTTON ====================
+        if (ImGui::Button("STOP", ImVec2(80, 50))) {
+            player.Stop();
+            // The bars will now gracefully drop to the bottom and wait!
+            // [C++ LEARNING] Loop through the array and set every frequency back to 0.0!
+            // Because we set it to 0, the Lerp math will gracefully animate the bars falling down.
+
+            // [C++ LEARNING] Reloading the path forces the audio buffer back to 0:00!
+            // Now when you hit PLAY next, it will start from the very beginning.
+            player.Load(selectedTrackPath); 
+            isUserPaused = true;
+
+            for (size_t i = 0; i < frozenFrequencies.size(); i++) {
+                frozenFrequencies[i] = 0.0f;
+            }
+        }
+
+        ImGui::SameLine(0.0f, 10.0f); // C++ LEARNING WHILE CODE: Forces the next button to be on the SAME horizontal row!
         
         // ==================== Dynamic Play/Stop Button ====================
         if (player.IsPlaying()) {
@@ -376,8 +401,9 @@ void Engine::Run()
             }
         }
         
+        ImGui::SameLine(0.0f, 10.0f);
+
         // ==================== NEXT BUTTON ====================
-        ImGui::SameLine();
         if (ImGui::Button("Next", ImVec2(80, 50))) {
             player.Stop();
             // Loops back to track 1 if you hit Next on the final track
@@ -389,12 +415,7 @@ void Engine::Run()
             isUserPaused = false;
         }
 
-        // ==================== STOP BUTTON ====================
-        if (ImGui::Button("STOP", ImVec2(80, 50))) {
-            player.Stop();
-            isUserPaused = true;
-            // The bars will now gracefully drop to the bottom and wait!
-        }
+        ImGui::PopStyleVar();
         ImGui::End();
 
         // ==========================================
