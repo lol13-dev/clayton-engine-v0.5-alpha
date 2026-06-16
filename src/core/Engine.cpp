@@ -76,7 +76,7 @@ void Engine::Run()
 
     // PRINT a clean interative console selector.
     std::cout << "==================================================\n";
-    std::cout << "=   Clayton Engine v0.6 Alpha PLAYLIST SELECTOR  =\n";
+    std::cout << "=   Clayton Engine v0.7 Alpha PLAYLIST SELECTOR  =\n";
     std::cout << "==================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
@@ -156,6 +156,9 @@ void Engine::Run()
 
     // 1.0f is 100% volume. 2.0f allows the user to overdrive the audio to 200%!
     float currentVolume = 1.0f;
+
+    // ASK the MP3 for its length ONCE before the starts.
+    float trackDuration = player.GetDuration();
 
     //------------------------------------
     // UPDATE 1: Window-Controlled Loop
@@ -338,7 +341,7 @@ void Engine::Run()
         // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
         // ==========================================
         float pillWidth = 500.0f;
-        float pillHeight = 110.0f;
+        float pillHeight = 150.0f;
 
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
         float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
@@ -365,6 +368,8 @@ void Engine::Run()
             selectedTrackPath = playlist[currentTrackIndex];
             cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
             player.Load(selectedTrackPath);
+            player.SetVolume(currentVolume);
+            trackDuration = player.GetDuration();
             player.Play();
             isUserPaused = true;
         }
@@ -422,14 +427,57 @@ void Engine::Run()
             player.Load(selectedTrackPath);
             // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
             player.SetVolume(currentVolume);
+            trackDuration = player.GetDuration();
             player.Play();
             isUserPaused = false;
         }
 
+        // ==================== SEEK BAR (NEW) ====================
+        // float trackDuration = player.GetDuration(); <- NOT USED DUE TO WAS CRASHING 
+        // float currentPos = player.GetCurrentPosition(); <- NOT USED DUE TO CRASHING AGAIN
+        static float uiSliderPos = 0.0f;
+        static bool isDraggingSeek = false;
+        
+        // ONLY update the UI from the real audio if I not DRAGGING the MOUSE
+        if (!isDraggingSeek){
+            uiSliderPos = player.GetCurrentPosition();
+        }
+        
+        // MATH to CONVERT RAW seconds into minutes and SECONDS.
+        int curM = (int)uiSliderPos / 60;
+        int curS = (int)uiSliderPos % 60;
+        int totM = (int)trackDuration / 60;
+        int totS = (int)trackDuration % 60;
+
+        // FORMAT the text to look like "1:23 / 3:45"
+        char timeLabel[64];
+        snprintf(timeLabel, sizeof(timeLabel), "%d:%02d / %d:%02d", curM, curS, totM, totS);
+
+        ImGui::SetCursorPos(ImVec2(70.0f, 75.0f)); // PUT SEEK BAR at Y: 75
+        ImGui::PushItemWidth(360.0f);
+
+        // DRAW the SLIDER, but I REMOVED the IMMEDIATE SEEK command.
+        ImGui::SliderFloat("##SeekBar", &uiSliderPos, 0.0f, trackDuration, timeLabel);
+
+        if (ImGui::IsItemActive()) {
+            isDraggingSeek = true;
+        }
+
+        // SAFELY seek ONLY when the user LET'S GO of THE MOUSE.
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            player.Stop(); // HALT the AUDIO THREAD.
+            player.SeekToPosition(uiSliderPos); // MOVE the MP3 playhead.
+            if (!isUserPaused) player.Play(); // RESUME playing seamlessly.
+            isDraggingSeek = false;
+        } else if (ImGui::IsItemDeactivated()) {
+            isDraggingSeek = false; // MOUSE released without changing anything.
+        }
+        ImGui::PopItemWidth();
+
         // ============= VOLUME OVERDRIVE SLIDER ================
         // Move the "cursor" down to Y: 75 so it sits nicely under the buttons.
         // We keep X: 70 so its left edge aligns perfectly with the 'Prev' button.
-        ImGui::SetCursorPos(ImVec2(70.0f, 75.0f));
+        ImGui::SetCursorPos(ImVec2(70.0f, 110.0f));
 
         // PushItemWidth locks the slider's length to exactly 360 pixels 
         // so it perfectly matches the width of the 4 buttons above it!
@@ -440,8 +488,8 @@ void Engine::Run()
             // When the USER drags the slider, this BLOCKS TRIGGERS!
             player.SetVolume(currentVolume);
         }
-
         ImGui::PopItemWidth();
+
         ImGui::PopStyleVar();
         ImGui::End();
 

@@ -17,6 +17,11 @@ public:
     void Stop();
     bool IsPlaying() const;
 
+    // TIME AND SEEKING TOOLS!
+    float GetDuration();
+    float GetCurrentPosition();
+    void SeekToPosition(float positionInSeconds);
+
     std::vector<float> GetLatestSamples(size_t sampleCount);
     void AppendSamplesToRingBuffer(const float* pSamples, size_t sampleCount);
     void SetVolume(float volume);
