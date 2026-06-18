@@ -414,7 +414,10 @@ void Engine::Run()
 
         // ==================== PREV BUTTON ====================
         // // Triggers if clicked OR if '-' (main keyboard or numpad Subtract) is pressed.
-        if (ImGui::Button("Prev", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_KeypadSubtract)))) {
+        // FIXED: LEFT ARROW OR MINUS KEY OR NUMPAD MINUS
+        bool pressedPrev = ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract);
+
+        if (ImGui::Button("Prev", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && pressedPrev)) {
             player.Stop();
             // Loops BACKWARDS cleanly EVEN if you are on Track 1.
             currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
@@ -472,7 +475,9 @@ void Engine::Run()
 
         // ==================== NEXT BUTTON ====================
         // Triggers if clicked OR if '+' (Equal key on main keyboard or Numpad Add) is pressed.
-        if (ImGui::Button("Next", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_KeypadAdd)))) {
+        // FIXED: RIGHT ARROW OR EQUAL/PLUS KEY OR NUMPAD PLUS
+        bool pressedNext = ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd);
+        if (ImGui::Button("Next", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && pressedNext)) {
             player.Stop();
             // Loops back to track 1 if you hit Next on the final track
             currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
