@@ -191,6 +191,7 @@ void Engine::Run()
                 // REPEAT: The index stays exactly the same. DO NOTHING WITH IT.
             } else if (playbackMode == 3) {
                 // SHUFFLE: PICK a COMPLETELY random track index.
+                currentTrackIndex = rand() % playlist.size();
             } else if (playbackMode == 0 && currentTrackIndex == playlist.size() - 1) {
                 // NORMAL MODE: If we are on the last track, stop the music completely.
                 isUserPaused = true;
