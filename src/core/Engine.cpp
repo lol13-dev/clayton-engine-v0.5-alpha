@@ -80,9 +80,9 @@ void Engine::Run()
     }
 
     // PRINT a clean interative console selector.
-    std::cout << "==================================================\n";
-    std::cout << "=  Clayton Engine v0.8 Alpha PLAYLIST SELECTOR   =\n";
-    std::cout << "==================================================\n";
+    std::cout << "===================================================\n";
+    std::cout << "== Clayton Engine v0.8.1 Alpha PLAYLIST SELECTOR ==\n";
+    std::cout << "===================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
         // EXTRACT just filename for a clear display look.
@@ -113,7 +113,7 @@ void Engine::Run()
     // -----------------------------------
     // 1. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.8 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.8.1 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -272,24 +272,25 @@ void Engine::Run()
             frozenFrequencies[1] = 0.0f;
         }
 
-        const size_t DISPLAY_BARS = 16;
+        // ==========================================
+        // New: TRUE RESPONSIVE MATH (PERCENTAGES) AND VISUALIZER STATE MACHINE
+        // ==========================================
+        
+        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM
+
+        const size_t DISPLAY_BARS = (visualMode == 0) ? 16 : 64;
         size_t usableBins = 256;
         size_t binsPerBar = usableBins / DISPLAY_BARS;
-
-        // ==========================================
-        // New: TRUE RESPONSIVE MATH (PERCENTAGES)
-        // ==========================================
+        
         // Dynamic Width: THE VISUALIZER takes up 80% of the window width
         float maxAvailableWidth = viewportSize.x * 0.8f;
-
         // PUT a cap on it so it doesn't scretch too far on ultra-wide monitors
         if (maxAvailableWidth > 1200.0f) maxAvailableWidth = 1200.0f;
-
         // Divide the available space evenly
         float barSpacing = maxAvailableWidth / DISPLAY_BARS;
 
         // THE BAR takes up 55% of its given slot, leaving a 45% empty cap
-        float barWidth = barSpacing * 0.55f;
+        float barWidth = (visualMode == 0) ? barSpacing * 0.55f : barSpacing * 0.45f;
 
         float totalBarsWidth = (DISPLAY_BARS - 1) * barSpacing + barWidth;
         float startPosX = (viewportSize.x - totalBarsWidth) * 0.5f;
@@ -298,7 +299,7 @@ void Engine::Run()
         // THE FIX: SMOOTHING ARRAY
         // ==========================================
         // 'static' means this array survives between frames so it remembers the heights!
-        static std::vector<float> smoothHeights(DISPLAY_BARS, 0.0f);
+        static std::vector<float> smoothHeights(128, 0.0f);
 
         for (size_t b = 0; b < DISPLAY_BARS; b++)
         {
@@ -350,20 +351,43 @@ void Engine::Run()
             if (actualHeight < minHeight) actualHeight = minHeight;
             float xPixelPos = startPosX + (b * barSpacing);
 
-            // 4. DYNAMIC Y-ANCHOR: Pin the bottom of the bars precisely 75% down the screen
-            float bottomY = viewportSize.y * 0.65f; 
-            float topY = bottomY - actualHeight;
+            float topY, bottomY;
+            ImU32 dynamicColor;
+            float cornerRadius;
 
-            // Paint the bars OVER the gradient, with built-in rounded corners!
-            float hue = 0.5f - (smoothHeights[b] * 0.5f);
-            if (hue < 0.0f) hue = 0.0f; // CLAMP it just in case.
-            ImU32 dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
+            if (visualMode == 0) {
+                // MODE 0: CLASSIC BOTTOM ANCHOR (Colorful & Round)
+                bottomY = viewportSize.y * 0.65f;
+                topY = bottomY - actualHeight;
+
+                float hue = 0.5f - (smoothHeights[b] * 0.5f);
+                if (hue < 0.0f) hue = 0.0f;
+                dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
+                cornerRadius = 15.0f;
+            } else {
+                // MODE 1: CENTER WAVEFORM (White & Sharp)
+                float centerY = viewportSize.y * 0.45f;     // Anchored to middle of the screen.
+                topY = centerY - (actualHeight * 0.5f);     // Grow UP from center.
+                bottomY = centerY + (actualHeight * 0.5f);  // Grow DOWN from center.
+
+                dynamicColor = IM_COL32(240, 240, 255, 255); // Clean, crisp white.
+                cornerRadius = 2.0f; // MINIMAL rounding for thin bars.
+            };
+
+            // // 4. DYNAMIC Y-ANCHOR: Pin the bottom of the bars precisely 75% down the screen
+            // float bottomY = viewportSize.y * 0.65f; 
+            // float topY = bottomY - actualHeight;
+
+            // // Paint the bars OVER the gradient, with built-in rounded corners!
+            // float hue = 0.5f - (smoothHeights[b] * 0.5f);
+            // if (hue < 0.0f) hue = 0.0f; // CLAMP it just in case.
+            // ImU32 dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
 
             ImGui::GetBackgroundDrawList()->AddRectFilled(
                 ImVec2(xPixelPos, topY),
                 ImVec2(xPixelPos + barWidth, bottomY),
                 dynamicColor, // Vibrant Cyan (#00E5FF)
-                15.0f // Perfectly rounded caps!
+                cornerRadius // Perfectly rounded caps.
             );
         }
 
@@ -578,7 +602,7 @@ void Engine::Run()
 
         // PushItemWidth locks the slider's length to exactly 460 pixels 
         // so it perfectly matches the width of the 4 buttons above it!
-        ImGui::PushItemWidth(540.0f);
+        ImGui::PushItemWidth(380.0f);
 
         // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
         if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, "Volume: %.2fx")){
@@ -586,6 +610,14 @@ void Engine::Run()
             player.SetVolume(currentVolume);
         }
         ImGui::PopItemWidth();
+
+        ImGui::SameLine(0.0f, 10.0f);
+
+        // The 100px Theme Switcher Button (430 + 10 + 100 = 540px grid perfectly maintained!).
+        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform" };
+        if (ImGui::Button(themeLabels[visualMode], ImVec2(150, 24))) {
+            visualMode = (visualMode + 1) % 2; // TOGGLES BETWEEN 0 and 1
+        }
 
         // ==================== LIVE FOLDER LOADER (UPGRADED) ====================
         ImGui::SetCursorPos(ImVec2(70.0f, 145.0f)); // POSITION IT BELOW THE VOLUME SLIDER
