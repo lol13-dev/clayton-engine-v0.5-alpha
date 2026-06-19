@@ -365,12 +365,35 @@ void Engine::Run()
                 dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
                 cornerRadius = 15.0f;
             } else {
-                // MODE 1: CENTER WAVEFORM (White & Sharp)
-                float centerY = viewportSize.y * 0.45f;     // Anchored to middle of the screen.
-                topY = centerY - (actualHeight * 0.5f);     // Grow UP from center.
-                bottomY = centerY + (actualHeight * 0.5f);  // Grow DOWN from center.
+                // ==========================================
+                // MODE 1: CENTER WAVEFORM (The "SKRILLEX FIX")
+                // ==========================================
 
-                dynamicColor = IM_COL32(240, 240, 255, 255); // Clean, crisp white.
+                // 1. THE DAMPENER: Multiply by 0.6f to COMPRESS loud DUBSTEP peaks
+                float mode1Height = actualHeight * 0.6f;
+
+                // 2. HARD CEILING: A failsafe so it NEVER grows taller than 75% of your screen.
+                float maxSafeHeight = viewportSize.y * 0.75f;
+                if (mode1Height > maxSafeHeight) mode1Height = maxSafeHeight;
+
+                // 3. CENTER ANCHOR: Pin the bars precisely 45% up the screen
+                float centerY = viewportSize.y * 0.45f;     // Anchored to middle of the screen.
+                topY = centerY - (mode1Height * 0.5f);     // Grow UP from center.
+                bottomY = centerY + (mode1Height * 0.5f);  // Grow DOWN from center.
+
+                // 4. DYNAMIC COLOR GRADIENT (Left to Right)
+                // We divide the current bar 'b' by the total bars (64) to get a percentage.
+                float barPercentage = static_cast<float>(b) / DISPLAY_BARS;
+
+                // Start at 0.5 (Cyan) and smoothly shift towards 0.85 (Purple/Pink).
+                float hue = 0.5f + (barPercentage * 0.35f);
+
+                // 5. Reduce EYE STRAIN.
+                // Brightness pulses with the music beat, but never goes fully dark
+                float brightness = 0.5f + (smoothHeights[b] * 0.5f);
+
+                // The final 0.85f drops the opacity to 85%, killing the blinding glare!
+                dynamicColor = ImColor::HSV(hue, 0.8f, brightness, 0.85f);
                 cornerRadius = 2.0f; // MINIMAL rounding for thin bars.
             };
 
