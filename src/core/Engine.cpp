@@ -18,6 +18,10 @@
 #include <cmath>
 #include <filesystem>
 #include <atomic> // <- For thread-safe operations.
+#include <algorithm> // <- For standard algorithms like std::sort.
+// FOR REPEAT, REPEAT ALL, SHUFFLE the music.
+#include <cstdlib> // FOR rand(); math
+#include <ctime>
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
 // =====================================
@@ -77,7 +81,7 @@ void Engine::Run()
 
     // PRINT a clean interative console selector.
     std::cout << "==================================================\n";
-    std::cout << "= Clayton Engine v0.7.3 Alpha PLAYLIST SELECTOR  =\n";
+    std::cout << "=  Clayton Engine v0.8 Alpha PLAYLIST SELECTOR   =\n";
     std::cout << "==================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
@@ -109,7 +113,7 @@ void Engine::Run()
     // -----------------------------------
     // 1. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.7.3 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.8 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -160,10 +164,12 @@ void Engine::Run()
     // ASK the MP3 for its length ONCE before the starts.
     float trackDuration = player.GetDuration();
 
-    //------------------------------------
-    // UPDATE 1: Window-Controlled Loop
-    //------------------------------------
-    // I removed "&& player.IsPlaying()" so the app stays open when paused!
+    // ==========================================
+    // NEW: PLAYBACK STATE MACHINE (THEN UPDATE 1: Window-Controlled Loop)
+    // ==========================================
+    // 0 = Normal, 1 = Repeat All, 2 = Repeat 1, 3 = Shuffle
+    int playbackMode = 1;   // DEFAULTING to 1 (REPEAT ALL) since that's what I built.
+    srand(time(NULL));      // "Seed" the randomizer using my Mac's internal lock.
 
     // DECLARE the VISUALIZER bars.
     std::vector<float> frozenFrequencies(1024, 0.0f);
@@ -176,23 +182,39 @@ void Engine::Run()
         // If the music stopped naturally (the user didn't click pause)... the track is over!
         if (!isUserPaused && trackDuration > 0.0f && player.GetCurrentPosition() >= (trackDuration - 0.1f)){
             
-            player.Stop(); // ENSURE the hardware is FULLY STOPPED.=
+            player.Stop(); // ENSURE the hardware is FULLY STOPPED.
+            bool shouldPlayNext = true;
             std::cout << "[ENGINE] TRACK FINISHED. Auto-playing next track...\n";
-                
-            // [C++ MAGIC] The % Modulo operator FORCES the playlist to LOOP BACK to 0.// 1. MOVE to THE NEXT TRACK NORMALLY (No Infinite Looping).
-            currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
 
-            // LOAD and PLAY the next track.
-            selectedTrackPath = playlist[currentTrackIndex];
-            cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+            // CHECK the STATE MACHINE.
+            if (playbackMode == 2) {
+                // REPEAT: The index stays exactly the same. DO NOTHING WITH IT.
+            } else if (playbackMode == 3) {
+                // SHUFFLE: PICK a COMPLETELY random track index.
+            } else if (playbackMode == 0 && currentTrackIndex == playlist.size() - 1) {
+                // NORMAL MODE: If we are on the last track, stop the music completely.
+                isUserPaused = true;
+                shouldPlayNext = false;
+            } else {
+                // REPEAT ALL (or Normal mode not at the end): Move forward 1 track
+                currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
+            }
 
-            // 2. LOAD the NEW TRACK AND APPLY USER SETTINGS.
-            player.Load(selectedTrackPath);
-            player.SetVolume(currentVolume);
-            trackDuration = player.GetDuration();
+            // ONLY load the next track if Normal Mode didn't halt the player.
+            if (shouldPlayNext) {
+                // 1. LOAD and PLAY the next track.
+                selectedTrackPath = playlist[currentTrackIndex];
+                cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
 
-            // 3. START the MUSIC.
-            player.Play();
+                // 2. LOAD the NEW TRACK AND APPLY USER SETTINGS.
+                player.Load(selectedTrackPath);
+                player.SetVolume(currentVolume);
+                trackDuration = player.GetDuration();
+
+                // 3. START the MUSIC.
+                player.Play();
+
+            }
 
             // RESET the VISUALIZER bars.
             for (size_t i = 0; i < frozenFrequencies.size(); i++)
@@ -383,7 +405,7 @@ void Engine::Run()
         // ==========================================
         // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
         // ==========================================
-        float pillWidth = 565.0f;
+        float pillWidth = 680.0f;
         float pillHeight = 190.0f;
 
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
@@ -408,24 +430,35 @@ void Engine::Run()
         // FIXED: LEFT ARROW OR MINUS KEY OR NUMPAD MINUS
         bool pressedPrev = ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract);
 
-        if (ImGui::Button("Prev", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && pressedPrev)) {
-            player.Stop();
-            // Loops BACKWARDS cleanly EVEN if you are on Track 1.
-            currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
-            selectedTrackPath = playlist[currentTrackIndex];
-            cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
-            player.Load(selectedTrackPath);
-            player.SetVolume(currentVolume);
-            trackDuration = player.GetDuration();
-            player.Play();
-            isUserPaused = true;
+        if (ImGui::Button("Prev", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && pressedPrev)) {
+            
+            // THE 3 SECOND RULE: check how far into the song we are.
+            if (player.GetCurrentPosition() > 3.0f) {
+                // IF more than 3 seconds in, just RESTART the current song smoothly.
+                player.Stop();
+                player.SeekToPosition(0.0f);
+                if (!isUserPaused) player.Play();
+            } else {
+                // IF we are at the beginning, go to ACTUAL previous track.
+                player.Stop();
+                // Loops BACKWARDS cleanly EVEN if you are on Track 1.
+                currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
+                selectedTrackPath = playlist[currentTrackIndex];
+                cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+
+                player.Load(selectedTrackPath);
+                player.SetVolume(currentVolume);
+                trackDuration = player.GetDuration();
+                player.Play();
+                isUserPaused = false;
+            }
         }
 
         // [C++ LEARNING] Forces exactly 10 pixels of space between buttons
         ImGui::SameLine(0.0f, 10.0f);
 
         // ==================== STOP BUTTON ====================
-        if (ImGui::Button("STOP", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_S)))) {
+        if (ImGui::Button("STOP", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_S)))) {
             player.Stop();
             // The bars will now gracefully drop to the bottom and wait!
             // [C++ LEARNING] Loop through the array and set every frequency back to 0.0!
@@ -447,14 +480,14 @@ void Engine::Run()
         
         // ==================== Dynamic Play/Stop Button ====================
         if (player.IsPlaying()) {
-            if (ImGui::Button("PAUSE", ImVec2(90, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
+            if (ImGui::Button("PAUSE", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
                 player.Stop();
                 // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
                 player.SetVolume(currentVolume);
                 isUserPaused = true; // Tell the engine this was intentional!
             }
         } else {
-            if (ImGui::Button("PLAY", ImVec2(90, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
+            if (ImGui::Button("PLAY", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
                 player.Play();
                 // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
                 player.SetVolume(currentVolume);
@@ -468,7 +501,7 @@ void Engine::Run()
         // Triggers if clicked OR if '+' (Equal key on main keyboard or Numpad Add) is pressed.
         // FIXED: RIGHT ARROW OR EQUAL/PLUS KEY OR NUMPAD PLUS
         bool pressedNext = ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd);
-        if (ImGui::Button("Next", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && pressedNext)) {
+        if (ImGui::Button("Next", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && pressedNext)) {
             player.Stop();
             // Loops back to track 1 if you hit Next on the final track
             currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
@@ -480,6 +513,19 @@ void Engine::Run()
             trackDuration = player.GetDuration();
             player.Play();
             isUserPaused = false;
+        }
+
+        ImGui::SameLine(0.0f, 10.0f);
+
+        // ==================== DYNAMIC PLAYBACK MODE BUTTON ====================
+        // THIS ARRAY holds the text for our 4 states.
+        const char* modeLabels[] = { "Normal", "Repeat All", "Repeat 1", "Shuffle"};
+
+        // THE BUTTON physically CHANGES its text based on the current playbackMode integer.
+        if (ImGui::Button(modeLabels[playbackMode], ImVec2(100, 50))) {
+
+            // [C++ NOTE] This smoothly cycles the number: 0 -> 1 -> 2 -> 3 -> 0 -> 1...
+            playbackMode = (playbackMode + 1) % 4;
         }
 
         // ==================== SEEK BAR (NEW) ====================
@@ -504,7 +550,7 @@ void Engine::Run()
         snprintf(timeLabel, sizeof(timeLabel), "%d:%02d / %d:%02d", curM, curS, totM, totS);
 
         ImGui::SetCursorPos(ImVec2(70.0f, 75.0f)); // PUT SEEK BAR at Y: 75
-        ImGui::PushItemWidth(360.0f);
+        ImGui::PushItemWidth(540.0f);
 
         // DRAW the SLIDER, but I REMOVED the IMMEDIATE SEEK command.
         ImGui::SliderFloat("##SeekBar", &uiSliderPos, 0.0f, trackDuration, timeLabel);
@@ -529,9 +575,9 @@ void Engine::Run()
         // We keep X: 70 so its left edge aligns perfectly with the 'Prev' button.
         ImGui::SetCursorPos(ImVec2(70.0f, 110.0f));
 
-        // PushItemWidth locks the slider's length to exactly 360 pixels 
+        // PushItemWidth locks the slider's length to exactly 460 pixels 
         // so it perfectly matches the width of the 4 buttons above it!
-        ImGui::PushItemWidth(360.0f);
+        ImGui::PushItemWidth(540.0f);
 
         // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
         if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, "Volume: %.2fx")){
@@ -565,10 +611,10 @@ void Engine::Run()
         if (isBrowsing) {
             // [UI TRICK] DISABLED the button while the window is open so they can't spam 50 windows.
             ImGui::BeginDisabled();
-            ImGui::Button("Browsing...", ImVec2(80, 0));
+            ImGui::Button("Browsing...", ImVec2(100, 0));
             ImGui::EndDisabled();
         } else {
-            if (ImGui::Button("Browse...", ImVec2(80, 0))) {
+            if (ImGui::Button("Browse...", ImVec2(100, 0))) {
                 isBrowsing = true; // LOCK the BUTTON.
                 asyncSelectedPath = ""; // CLEAR old paths
 
@@ -590,7 +636,7 @@ void Engine::Run()
 
         ImGui::SameLine(0.0f, 10.0f);
 
-        ImGui::PushItemWidth(150.0f);
+        ImGui::PushItemWidth(300.0f);
         // THIS creates a text box where I can type any Mac folder path!
         ImGui::InputText("##FolderPath", folderPathBuffer, sizeof(folderPathBuffer));
         ImGui::PopItemWidth();
@@ -598,12 +644,11 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
         
         // When the user clicks the button, the engine re-scans the COMPUTER.
-        if (ImGui::Button("Load Folder", ImVec2(110, 0))) {
+        if (ImGui::Button("Load Folder", ImVec2(120, 0))) {
             std::string newPath = folderPathBuffer;
 
             // 1. VALIDATE that the folder actually exists on the Mac.
             if (fs::exists(newPath) && fs::is_directory(newPath)) {
-
                 std::cout << "[ENGINE] Scanning new folder: " << newPath << "\n";
                 // playlist.clear(); <- NOT USED DUE TO WAS CRASHED.
                 // 1. Create a TEMPORARY playlist first! Do NOT use playlist.clear() here.
@@ -613,12 +658,18 @@ void Engine::Run()
                 // (Your awesome .wav and .flac additions are preserved here!)
                 for (const auto &entry : fs::directory_iterator(newPath)) {
                     if (entry.path().extension() == ".mp3" || entry.path().extension() == ".MP3" || entry.path().extension() == ".wav" || entry.path().extension() == ".WAV" || entry.path().extension() == ".flac" || entry.path().extension() == ".FLAC"){
-                        playlist.push_back(entry.path().string());
+                        tempPlaylist.push_back(entry.path().string());
                     }
                 }
 
+                // [NEW FIX] SORT the files alphabetically (A-Z) so it matches Mac Finder.
+                std::sort(tempPlaylist.begin(), tempPlaylist.end());
+
                 // 3. ONLY overwrite the real playlist if we actually found music!
                 if (!tempPlaylist.empty()) {
+                    // THIS completely DELETES the old folder's music.
+                    playlist = tempPlaylist;
+
                     player.Stop();
                     currentTrackIndex = 0;
                     selectedTrackPath = playlist[currentTrackIndex];
@@ -627,7 +678,7 @@ void Engine::Run()
                     player.Load(selectedTrackPath);
                     player.SetVolume(currentVolume);
                     trackDuration = player.GetDuration();
-                    player.Play();
+                    player.Play(); // ??
 
                     isUserPaused = false;
                     for (size_t i = 0; i < frozenFrequencies.size(); i++) {
