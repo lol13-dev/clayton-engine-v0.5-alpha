@@ -242,7 +242,6 @@ void Engine::Run()
         // I use ImGui's background draw list to paint a gradient over the black OpenGL canvas.
         ImU32 colorTop = IM_COL32(26, 60, 40, 255);     // Premium Dark Green (#1A3C28)
         ImU32 colorBottom = IM_COL32(10, 25, 17, 255);  // Deep Midnight Green (#0A1911)
-
         ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(
             ImVec2(0, 0), viewportSize,                     // START at top-left, stretch to bottom-right
             colorTop, colorTop, colorBottom, colorBottom    // Apply color (TopLeft, TopRight, BottomRight, BottomLeft)
@@ -273,10 +272,19 @@ void Engine::Run()
         }
 
         // ==========================================
+        // IMGUI PHASE 3: RESPONSIVE "PILL" INTERFACE
+        // ==========================================
+        float pillWidth = 680.0f;
+        float pillHeight = 190.0f;
+        // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
+        float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
+        float pillPosY = (viewportSize.y - pillHeight) - 40.0f;
+
+        // ==========================================
         // New: TRUE RESPONSIVE MATH (PERCENTAGES) AND VISUALIZER STATE MACHINE
         // ==========================================
         
-        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM
+        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline.
 
         const size_t DISPLAY_BARS = (visualMode == 0) ? 16 : 64;
         size_t usableBins = 256;
@@ -301,25 +309,47 @@ void Engine::Run()
         // 'static' means this array survives between frames so it remembers the heights!
         static std::vector<float> smoothHeights(128, 0.0f);
 
+        // Mode 2 (Polyline) REQUIRES keeping track on points.
+        std::vector<ImVec2> mainLinePoints;
+        std::vector<ImVec2> shadowLinePoints;
+        float centerY = pillPosY - 180.0f; // ANCHOR above the UI PILL.
+
+        if (visualMode == 2){
+            mainLinePoints.push_back(ImVec2(startPosX -  40.0f, centerY));
+            shadowLinePoints.push_back(ImVec2(startPosX - 40.0f, centerY + 6.0f));
+        }
+
+        float minLog = std::log10(2.0f);
+        float maxLog = std::log10(256.0f);
+
+        // ONE UNIFIED LOOP FOR ALL MATH.
         for (size_t b = 0; b < DISPLAY_BARS; b++)
         {
+            float startLog = minLog + (maxLog - minLog) * ((float)b / DISPLAY_BARS);
+            float endLog = minLog + (maxLog - minLog) * ((float)(b + 1) / DISPLAY_BARS);
+
+            size_t startIndex = (size_t)std::pow(10.0f, startLog);
+            size_t endIndex = (size_t)std::pow(10.0f, endLog);
+            if (endIndex <= startIndex) endIndex = startIndex + 1;
+
             float binAverage = 0.0f;
-            for (size_t j = 0; j < binsPerBar; j++)
+            int count = 0;
+            for (size_t j = startIndex; j < endIndex; j++)
             {
-                size_t index = 2 + (b * binsPerBar) + j;
-                if (index < frozenFrequencies.size())
-                {
-                    binAverage += frozenFrequencies[index];
+                // size_t index = 2 + (b * binsPerBar) + j;
+                if (j < frozenFrequencies.size()) {
+                    binAverage += frozenFrequencies[j];
+                    count++;
                 }
             }
-            binAverage /= binsPerBar;
+            if (count > 0) binAverage /= count;
 
-            float eqBoost = 1.0f + (b * 0.15f);
+            float eqBoost = 1.0f + (b * 0.35f);
             float boostedAverage = binAverage * eqBoost;
 
-            const float SENSITIVITY = 15.0f;
+            const float SENSITIVITY = 10.0f;
             float logValue = std::log10(boostedAverage * SENSITIVITY + 1.0f);
-            const float MAX_LOG_VALUE = 2.4f;
+            const float MAX_LOG_VALUE = 2.8f;
 
             // This is the "Target" height from the RAW AUDIO.
             float targetHeight = logValue / MAX_LOG_VALUE;
@@ -330,8 +360,8 @@ void Engine::Run()
             // THE UNIVERSAL FIX: ASYMMETRIC LEEPING  (ATTACK OR DELAY)
             // ==========================================
             // This setup works perfectly for EDM, Classical, Jazz, and Rock automatically.
-            float attackFactor = 0.40f;
-            float decayFactor = 0.06f;
+            float attackFactor = 0.92f; // it was 0.40f;
+            float decayFactor = 0.07f; // it was 0.06f;
 
             if (targetHeight > smoothHeights[b]) {
                 smoothHeights[b] += (targetHeight - smoothHeights[b]) * attackFactor;
@@ -346,71 +376,91 @@ void Engine::Run()
             float maxBarHeight = viewportSize.y * 0.45f;
             float actualHeight = smoothHeights[b] * maxBarHeight;
 
-            // 3. MINIMUM HEIGHT: Even the quiet data "resting dots" scale down on tiny screens
-            float minHeight = viewportSize.y * 0.02f;
-            if (actualHeight < minHeight) actualHeight = minHeight;
+            // UNIVERSAL VARIABLES.
             float xPixelPos = startPosX + (b * barSpacing);
-
-            float topY, bottomY;
+            float topY, bottomY, cornerRadius;
             ImU32 dynamicColor;
-            float cornerRadius;
+            // float cornerRadius;
 
             if (visualMode == 0) {
                 // MODE 0: CLASSIC BOTTOM ANCHOR (Colorful & Round)
-                bottomY = viewportSize.y * 0.65f;
+                // 1. SHORTER HEIGHT (20% of screen max) so it isn't OVERWHELMING.
+                float actualHeight = smoothHeights[b] * (viewportSize.y * 0.55f);
+                if (actualHeight < viewportSize.y * 0.02f) actualHeight = viewportSize.y * 0.02f;
+
+                bottomY = pillPosY - 30.0f; // Anchors exactly 30px above the UI Pill
                 topY = bottomY - actualHeight;
 
-                float hue = 0.5f - (smoothHeights[b] * 0.5f);
-                if (hue < 0.0f) hue = 0.0f;
-                dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
-                cornerRadius = 15.0f;
-            } else {
+                // 2. DYNAMIC EDM COLOR (Heatmap Effect):
+                // Starts at 0.6 (Cool Blue/Cyan). As the bar grows, it pushes towards 0.0 (Bright Red).
+                float hue = 0.6f - (smoothHeights[b] * 0.6f);
+                if (hue < 0.0f) hue = 0.0f; // FAILSAFE to PREVENT NEGATIVE colors.
+
+                // 100% Brightness and High Saturation for that neon club look
+                ImU32 dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
+
+                ImGui::GetBackgroundDrawList()->AddRectFilled(
+                    ImVec2(xPixelPos, topY),
+                    ImVec2(xPixelPos + (barWidth * 0.8f), bottomY),
+                    dynamicColor, 6.0f // Modern, subtle rounded corners
+                );
+                
+
+            } else if (visualMode == 1) {
                 // ==========================================
                 // MODE 1: CENTER WAVEFORM (The "SKRILLEX FIX")
                 // ==========================================
 
                 // 1. THE DAMPENER: Multiply by 0.6f to COMPRESS loud DUBSTEP peaks
                 float mode1Height = actualHeight * 0.6f;
-
                 // 2. HARD CEILING: A failsafe so it NEVER grows taller than 75% of your screen.
                 float maxSafeHeight = viewportSize.y * 0.75f;
                 if (mode1Height > maxSafeHeight) mode1Height = maxSafeHeight;
-
                 // 3. CENTER ANCHOR: Pin the bars precisely 45% up the screen
                 float centerY = viewportSize.y * 0.45f;     // Anchored to middle of the screen.
                 topY = centerY - (mode1Height * 0.5f);     // Grow UP from center.
-                bottomY = centerY + (mode1Height * 0.5f);  // Grow DOWN from center.
-
+                bottomY = centerY + (mode1Height * 0.5f);  // Grow DOWN from center.=
                 // 4. DYNAMIC COLOR GRADIENT (Left to Right)
                 // We divide the current bar 'b' by the total bars (64) to get a percentage.
                 float barPercentage = static_cast<float>(b) / DISPLAY_BARS;
-
                 // Start at 0.5 (Cyan) and smoothly shift towards 0.85 (Purple/Pink).
                 float hue = 0.5f + (barPercentage * 0.35f);
-
                 // 5. Reduce EYE STRAIN.
                 // Brightness pulses with the music beat, but never goes fully dark
                 float brightness = 0.5f + (smoothHeights[b] * 0.5f);
 
                 // The final 0.85f drops the opacity to 85%, killing the blinding glare!
-                dynamicColor = ImColor::HSV(hue, 0.8f, brightness, 0.85f);
-                cornerRadius = 2.0f; // MINIMAL rounding for thin bars.
-            };
+                ImGui::GetBackgroundDrawList()->AddRectFilled(
+                    ImVec2(xPixelPos, topY), ImVec2(xPixelPos + barWidth, bottomY),
+                    ImColor::HSV(hue, 0.8f, brightness, 0.85f), 2.0f
+                );
 
-            // // 4. DYNAMIC Y-ANCHOR: Pin the bottom of the bars precisely 75% down the screen
-            // float bottomY = viewportSize.y * 0.65f; 
-            // float topY = bottomY - actualHeight;
+            } else if (visualMode == 2) {
+                // MODE 2: Neon Polyline Math.
+                float actualHeight = smoothHeights[b] * (viewportSize.y * 0.35f);
 
-            // // Paint the bars OVER the gradient, with built-in rounded corners!
-            // float hue = 0.5f - (smoothHeights[b] * 0.5f);
-            // if (hue < 0.0f) hue = 0.0f; // CLAMP it just in case.
-            // ImU32 dynamicColor = ImColor::HSV(hue, 0.9f, 1.0f);
+                float peakY = centerY - actualHeight;
+                float centerOfBarX = xPixelPos + (barWidth * 0.5f);
+                
+                mainLinePoints.push_back(ImVec2(centerOfBarX, peakY));
+                shadowLinePoints.push_back(ImVec2(centerOfBarX, peakY + 6.0f));
+            }
 
-            ImGui::GetBackgroundDrawList()->AddRectFilled(
-                ImVec2(xPixelPos, topY),
-                ImVec2(xPixelPos + barWidth, bottomY),
-                dynamicColor, // Vibrant Cyan (#00E5FF)
-                cornerRadius // Perfectly rounded caps.
+        } // END OF BAR DRAWING LOOP.
+
+        // EXECUTE Polyline DRAW OUTSIDE the LOOP.
+        if (visualMode == 2) {
+            mainLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY));
+            shadowLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY + 6.0f));
+
+            ImGui::GetBackgroundDrawList()->AddPolyline(
+                shadowLinePoints.data(), shadowLinePoints.size(),
+                IM_COL32(230, 70, 230, 255), ImDrawFlags_None, 6.0f
+            );
+
+            ImGui::GetBackgroundDrawList()->AddPolyline(
+                mainLinePoints.data(), mainLinePoints.size(),
+                IM_COL32(70, 70, 230, 255), ImDrawFlags_None, 6.0f
             );
         }
 
@@ -420,12 +470,25 @@ void Engine::Run()
         std::string nowPlayingText = "Now Playing: " + cleanTrackName;
 
         // SAFE "UP NEXT" MATH (Prevents Modulo-by-Zero CRASHES).
+        std::string upNextText = "Up Next: None";
+
         std::string nextTrackName = "None";
         if (playlist.size() > 0) {
-            size_t nextIndex = (currentTrackIndex + 1) % playlist.size();
-            nextTrackName = fs::path(playlist[nextIndex]).filename().stem().string();
+            if (playbackMode == 3) {
+                // MODE 3: SHUFFLE
+                upNextText = "Up Next: Songs will be selected randomly (Shuffle Mode)";
+
+            } else if (playbackMode == 2) {
+                // MODE 2: REPEAT 1
+                upNextText = "Up Next: Repeating Current Track";
+
+            } else {
+                // MODE 0 & 1: NORMAL & REPEAT ALL
+                size_t nextIndex = (currentTrackIndex + 1) % playlist.size();
+                std::string nextTrackName = fs::path(playlist[nextIndex]).filename().stem().string();
+                upNextText = "Up Next: " + nextTrackName;
+            }
         }
-        std::string upNextText = "Up Next: " + nextTrackName;
 
         // CENTERING math for the main title (NOW PLAYING).
         ImVec2 mainTextSize = ImGui::CalcTextSize(nowPlayingText.c_str());
@@ -449,16 +512,6 @@ void Engine::Run()
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.7f, 0.8f), "%s", upNextText.c_str());
 
         ImGui::End();
-
-        // ==========================================
-        // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
-        // ==========================================
-        float pillWidth = 680.0f;
-        float pillHeight = 190.0f;
-
-        // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
-        float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
-        float pillPosY = (viewportSize.y - pillHeight) - 40.0f;
 
         ImGui::SetNextWindowPos(ImVec2(pillPosX, pillPosY)); 
         ImGui::SetNextWindowSize(ImVec2(pillWidth, pillHeight));
@@ -577,8 +630,6 @@ void Engine::Run()
         }
 
         // ==================== SEEK BAR (NEW) ====================
-        // float trackDuration = player.GetDuration(); <- NOT USED DUE TO WAS CRASHING 
-        // float currentPos = player.GetCurrentPosition(); <- NOT USED DUE TO CRASHING AGAIN
         static float uiSliderPos = 0.0f;
         static bool isDraggingSeek = false;
         
@@ -637,9 +688,9 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // The 100px Theme Switcher Button (430 + 10 + 100 = 540px grid perfectly maintained!).
-        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform" };
+        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline" };
         if (ImGui::Button(themeLabels[visualMode], ImVec2(150, 24))) {
-            visualMode = (visualMode + 1) % 2; // TOGGLES BETWEEN 0 and 1
+            visualMode = (visualMode + 1) % 3; // TOGGLES BETWEEN 0 and 1
         }
 
         // ==================== LIVE FOLDER LOADER (UPGRADED) ====================
@@ -667,10 +718,10 @@ void Engine::Run()
         if (isBrowsing) {
             // [UI TRICK] DISABLED the button while the window is open so they can't spam 50 windows.
             ImGui::BeginDisabled();
-            ImGui::Button("Browsing...", ImVec2(100, 0));
+            ImGui::Button("Browsing...", ImVec2(100, 24));
             ImGui::EndDisabled();
         } else {
-            if (ImGui::Button("Browse...", ImVec2(100, 0))) {
+            if (ImGui::Button("Browse...", ImVec2(100, 24))) {
                 isBrowsing = true; // LOCK the BUTTON.
                 asyncSelectedPath = ""; // CLEAR old paths
 
@@ -706,7 +757,6 @@ void Engine::Run()
             // 1. VALIDATE that the folder actually exists on the Mac.
             if (fs::exists(newPath) && fs::is_directory(newPath)) {
                 std::cout << "[ENGINE] Scanning new folder: " << newPath << "\n";
-                // playlist.clear(); <- NOT USED DUE TO WAS CRASHED.
                 // 1. Create a TEMPORARY playlist first! Do NOT use playlist.clear() here.
                 std::vector<std::string> tempPlaylist;
 
