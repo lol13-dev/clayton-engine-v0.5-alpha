@@ -1,4 +1,4 @@
-// UPGRADED VERSION.
+// UPGRADED VERSION (ALMOST DONE).
 // BETTER REAL-TIME PERFORMANCE WITH RING BUFFER AND FFT SUPPORT. SEE src/core/Engine_v1.cpp for the original version without these features.
 // Engine.cpp
 #include "Engine.h"
@@ -50,71 +50,30 @@ void Engine::Initialize()
 }
 
 // =====================================
-// MAIN ENGINE LOOP
+// MAIN ENGINE LOOP 
 // =====================================
 void Engine::Run()
 {
-    //-----------------------------------
-    // DYNAMIC TRACK SELECTION MENU.
+    // -----------------------------------
+    // DYNAMIC TRACK SELECTION MENU (CLEAN BOOT STATE).
     // -----------------------------------
 
+    // UX FIX Step 1: START completely EMPTY. No hardcoded "assets" folder.
     std::vector<std::string> playlist;
-    std::string assetsPath = "assets";
+    int currentTrackIndex = 0;
+    std::string selectedTrackPath = "";
+    std::string cleanTrackName = "";
 
-    // SCAN the assets folder for all any .mp3 files
-    if (fs::exists(assetsPath) && fs::is_directory(assetsPath))
-    {
-        for (const auto &entry : fs::directory_iterator(assetsPath))
-        {
-            if (entry.path().extension() == ".mp3")
-            {
-                playlist.push_back(entry.path().string());
-            }
-        }
-    }
-
-    // FALLBACK if the assets folder is EMPTY or MISSING.
-    if (playlist.empty())
-    {
-        std::cout << "[ENGINE ERROR] No .mp3 files found in 'assets/' folder!\n";
-        return;
-    }
-
-    // PRINT a clean interative console selector.
-    std::cout << "===================================================\n";
-    std::cout << "== Clayton Engine v0.9.0 Alpha PLAYLIST SELECTOR ==\n";
-    std::cout << "===================================================\n";
-    for (size_t i = 0; i < playlist.size(); i++)
-    {
-        // EXTRACT just filename for a clear display look.
-        std::string filename = fs::path(playlist[i]).filename().string();
-        std::cout << "[" << i + 1 << "] " << filename << "\n";
-    }
-
-    int choice = 0;
-    std::cin >> choice;
-
-    // VALIDATE input selection boundaries
-    if (choice < 1 || choice > static_cast<int>(playlist.size()))
-    {
-        std::cout << "[ENGINE ERROR] Invalid selection. DEFAULTING to track 1.\n";
-        choice = 1;
-    }
-
-    int currentTrackIndex = choice - 1; // Remember where I in the playlist!
-    std::string selectedTrackPath = playlist[currentTrackIndex];
-    std::string cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
-
-    //------------------------------------
-    // Create modules
-    //------------------------------------
+    // -----------------------------------
+    // 1. Create modules.
+    // -----------------------------------
     AudioPlayer player;
     FFT fft;
 
     // -----------------------------------
-    // 1. CREATE a Window.
+    // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.0 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.1 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -122,13 +81,13 @@ void Engine::Run()
     }
 
     // -----------------------------------
-    // 2. CREATE a Spectrum Renderer.
+    // 3. CREATE a Spectrum Renderer.
     // -----------------------------------
     SpectrumRenderer spectrumRenderer;
     spectrumRenderer.Initialize();
 
     // ==========================================
-    // IMGUI PHASE 1: INITIALIZATION
+    // IMGUI Phase 1: INITIALIZATION.
     // ==========================================
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -139,20 +98,6 @@ void Engine::Run()
     ImGui_ImplGlfw_InitForOpenGL(window.GetGLFWWindowPointer(), true);
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
-    //------------------------------------
-    // Load MP3 Asset Stream (NOW IT'S DYNAMIC)
-    //------------------------------------
-    if (player.Load(selectedTrackPath))
-    {
-        player.Play();
-        std::cout << "[ENGINE] Now streaming: " << cleanTrackName << "\n";
-    }
-    else
-    {
-        std::cout << "[ENGINE] Failed to load audio. Exiting...\n";
-        return;
-    }
-
     const int TARGET_FPS = 60;
     const int FRAME_TIME_MS = 1000 / TARGET_FPS;
     const size_t FFT_WINDOW_SIZE = 1024;
@@ -160,7 +105,7 @@ void Engine::Run()
     // NEW: Remembers if the user intentionally paused the music
     bool isUserPaused = false;
 
-    // 1.0f is 100% volume. 2.0f allows the user to overdrive the audio to 200%!
+    // DEFAULTING to 1.0f is 100% volume. 2.0f allows the user to overdrive the audio to 200%!
     float currentVolume = 1.0f;
     // ASK the MP3 for its length ONCE before the starts.
     float trackDuration = player.GetDuration();
@@ -185,13 +130,12 @@ void Engine::Run()
     
     while (window.IsOpen())
     {
-
         trumFaster.StartFrame(); // START the STOPWATCH.
         // ==========================================
         // NEW FEATURE: CONTINUOUS PLAYBACK (AUTO-NEXT)
         // ==========================================
         // If the music stopped naturally (the user didn't click pause)... the track is over!
-        if (!isUserPaused && trackDuration > 0.0f && player.GetCurrentPosition() >= (trackDuration - 0.1f)){
+        if (!isUserPaused && trackDuration > 0.0f && !playlist.empty() && player.GetCurrentPosition() >= (trackDuration - 0.1f)){
             
             player.Stop(); // ENSURE the hardware is FULLY STOPPED.
             bool shouldPlayNext = true;
@@ -238,13 +182,13 @@ void Engine::Run()
         window.Clear(0.0f, 0.0f, 0.0f, 1.0f);
 
         // ==========================================
-        // IMGUI PHASE 2: START NEW UI FRAME
+        // IMGUI Phase 2: START NEW UI FRAME.
         // ==========================================
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // QUERY the actual dynamic size of the WINDOW!
+        // NOTE:QUERY the actual dynamic size of the WINDOW!
         ImVec2 viewportSize = ImGui::GetMainViewport()->Size; 
 
         // ==========================================
@@ -312,7 +256,7 @@ void Engine::Run()
         ImGui::End();
 
         // ==========================================
-        // IMGUI PHASE 3: RESPONSIVE "PILL" INTERFACE
+        // IMGUI Phase 3: RESPONSIVE "PILL" INTERFACE
         // ==========================================
         // I Wide the pill slightly to 760.0f so the toggle button FITS PERFECLY.
         float pillWidth = 830.0f;
@@ -324,7 +268,6 @@ void Engine::Run()
         // ==========================================
         // New: TRUE RESPONSIVE MATH (PERCENTAGES) AND VISUALIZER STATE MACHINE
         // ==========================================
-        
         static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline.
 
         // TrumFaster: LOD Override (FIXED).
@@ -410,7 +353,7 @@ void Engine::Run()
             if (targetHeight < 0.0f) targetHeight = 0.0f;
 
             // ==========================================
-            // THE UNIVERSAL FIX: ASYMMETRIC LEEPING  (ATTACK OR DELAY)
+            // THE UNIVERSAL FIX: ASYMMETRIC LEEPING (ATTACK OR DELAY)
             // ==========================================
             // EDM-optimized Asymmetric Lerping (Tied to TrumFaster profile).
             float attackFactor = tfProfile.lerpAttackSpeed; // it was 0.40f;
@@ -425,7 +368,7 @@ void Engine::Run()
             // ==========================================
             // NEW: DYNAMIC BAR HEIGHTS & ANCHORING
             // ==========================================
-            // 2. DYNAMIC HEIGHT: Bars can grow up to 45% of the window's total height
+            // DYNAMIC HEIGHT: Bars can grow up to 45% of the window's total height
             float maxBarHeight = viewportSize.y * 0.45f;
             float actualHeight = smoothHeights[b] * maxBarHeight;
 
@@ -433,7 +376,6 @@ void Engine::Run()
             float xPixelPos = startPosX + (b * barSpacing);
             float topY, bottomY, cornerRadius;
             ImU32 dynamicColor;
-            // float cornerRadius;
 
             if (visualMode == 0) {
                 // MODE 0: CLASSIC BOTTOM ANCHOR (Colorful & Round)
@@ -556,9 +498,14 @@ void Engine::Run()
         }
 
         // ==========================================
-        // IMGUI PHASE 3 (UPDATED): METADATA & UP NEXT QUEUE
+        // IMGUI Phase 3: METADATA & UP NEXT QUEUE, IT'S NOW SEAMLESSLY. (UX FIX Step 1)
         // ==========================================
-        std::string nowPlayingText = "Now Playing: " + cleanTrackName;
+        std::string nowPlayingText;
+        if (cleanTrackName.empty()) {
+            nowPlayingText = "Now Playing: No Music Detected. Please SELECT A FOLDER first.";
+        } else {
+            nowPlayingText = "Now Playing: " + cleanTrackName;
+        }
 
         // SAFE "UP NEXT" MATH (Prevents Modulo-by-Zero CRASHES).
         std::string upNextText = "Up Next: None";
@@ -610,70 +557,68 @@ void Engine::Run()
         // Create a dark, rounded window container
         ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
 
-        // DRAW FPS Counter from TrumFaster (Top Right Corner of PILL). (DISABLED)
-        // ImGui::SetCursorPos(ImVec2(pillWidth - 80.0f, 15.0f));
-        // ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 1.0f), "FPS: %.0f", trumFaster.GetActualFPS());
-
         // Center the buttons inside the pill
         ImGui::SetCursorPos(ImVec2(70.0f, 15.0f)); 
         // [C++ LEARNING] 'PushStyleVar' changes the internal ImGui drawing rules.
         // 'FrameRounding, 10.0f' curves the corners of every button drawn after this line!
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
 
-        // ==================== PREV BUTTON ====================
+        // ==================== PREV BUTTON (FIXED) ====================
         // // Triggers if clicked OR if '-' (main keyboard or numpad Subtract) is pressed.
         // FIXED: LEFT ARROW OR MINUS KEY OR NUMPAD MINUS
         bool pressedPrev = ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract);
-
         if (ImGui::Button("Prev", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && pressedPrev)) {
-            
             // THE 3 SECOND RULE: check how far into the song we are.
-            if (player.GetCurrentPosition() > 3.0f) {
-                // IF more than 3 seconds in, just RESTART the current song smoothly.
-                player.Stop();
-                player.SeekToPosition(0.0f);
-                if (!isUserPaused) player.Play();
-            } else {
-                // IF we are at the beginning, go to ACTUAL previous track.
-                player.Stop();
-                // Loops BACKWARDS cleanly EVEN if you are on Track 1.
-                currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
-                selectedTrackPath = playlist[currentTrackIndex];
-                cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+            // UX FIX Step 3: Crash prevention! Only seek/skip if a playlist actually exists.
+            if (!playlist.empty()) {
+                if (player.GetCurrentPosition() > 3.0f) {
+                    player.Stop();
+                    player.SeekToPosition(0.0f);
+                    if (!isUserPaused) player.Play();
+                } else {
+                    // IF we are at the beginning, go to ACTUAL previous track.
+                    player.Stop();
+                    // Loops BACKWARDS cleanly EVEN if you are on Track 1.
+                    currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
+                    selectedTrackPath = playlist[currentTrackIndex];
+                    cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
 
-                player.Load(selectedTrackPath);
-                player.SetVolume(currentVolume);
-                trackDuration = player.GetDuration();
-                player.Play();
-                isUserPaused = false;
+                    player.Load(selectedTrackPath);
+                    player.SetVolume(currentVolume);
+                    trackDuration = player.GetDuration();
+                    player.Play();
+                    isUserPaused = false;
+                }
             }
         }
 
         // [C++ LEARNING] Forces exactly 10 pixels of space between buttons
         ImGui::SameLine(0.0f, 10.0f);
 
-        // ==================== STOP BUTTON ====================
+        // ==================== STOP BUTTON (FIXED) ====================
         if (ImGui::Button("STOP", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_S)))) {
-            player.Stop();
-            // The bars will now gracefully drop to the bottom and wait!
-            // [C++ LEARNING] Loop through the array and set every frequency back to 0.0!
-            // Because we set it to 0, the Lerp math will gracefully animate the bars falling down.
+            if (!playlist.empty()) {
+                player.Stop();
+                // The bars will now gracefully drop to the bottom and wait!
+                // [C++ LEARNING] Loop through the array and set every frequency back to 0.0!
+                // Because we set it to 0, the Lerp math will gracefully animate the bars falling down.
 
-            // [C++ LEARNING] Reloading the path forces the audio buffer back to 0:00!
-            // Now when you hit PLAY next, it will start from the very beginning.
-            player.Load(selectedTrackPath); 
-            // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
-            player.SetVolume(currentVolume);
-            isUserPaused = true;
+                // [C++ LEARNING] Reloading the path forces the audio buffer back to 0:00!
+                // Now when you hit PLAY next, it will start from the very beginning.
+                player.Load(selectedTrackPath); 
+                // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+                player.SetVolume(currentVolume);
+                isUserPaused = true;
 
-            for (size_t i = 0; i < frozenFrequencies.size(); i++) {
-                frozenFrequencies[i] = 0.0f;
+                for (size_t i = 0; i < frozenFrequencies.size(); i++) {
+                    frozenFrequencies[i] = 0.0f;
+                }
             }
         }
 
         ImGui::SameLine(0.0f, 10.0f); // C++ LEARNING WHILE CODE: Forces the next button to be on the SAME horizontal row!
         
-        // ==================== Dynamic Play/Stop Button ====================
+        // ==================== Dynamic Play/Stop (Stop FIXED) Button ====================
         if (player.IsPlaying()) {
             if (ImGui::Button("PAUSE", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
                 player.Stop();
@@ -683,10 +628,12 @@ void Engine::Run()
             }
         } else {
             if (ImGui::Button("PLAY", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
-                player.Play();
-                // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
-                player.SetVolume(currentVolume);
-                isUserPaused = false; // Music is running naturally again
+                if (!playlist.empty()) {
+                    player.Play();
+                    // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+                    player.SetVolume(currentVolume);
+                    isUserPaused = false; // Music is running naturally again
+                }
             }
         }
         
@@ -697,24 +644,27 @@ void Engine::Run()
         // FIXED: RIGHT ARROW OR EQUAL/PLUS KEY OR NUMPAD PLUS
         bool pressedNext = ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd);
         if (ImGui::Button("Next", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && pressedNext)) {
-            player.Stop();
-            // Loops back to track 1 if you hit Next on the final track
-            currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
-            selectedTrackPath = playlist[currentTrackIndex];
-            cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
-            player.Load(selectedTrackPath);
-            // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
-            player.SetVolume(currentVolume);
-            trackDuration = player.GetDuration();
-            player.Play();
-            isUserPaused = false;
+            // UX FIX Step 3: Crash prevention! Only skip if a playlist actually exists
+            if (!playlist.empty()) {
+                player.Stop();
+                // Loops back to track 1 if you hit Next on the final track
+                currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
+                selectedTrackPath = playlist[currentTrackIndex];
+                cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+                player.Load(selectedTrackPath);
+                // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
+                player.SetVolume(currentVolume);
+                trackDuration = player.GetDuration();
+                player.Play();
+                isUserPaused = false;
+            }
         }
 
         ImGui::SameLine(0.0f, 10.0f);
 
         // ==================== DYNAMIC PLAYBACK MODE BUTTON ====================
         // THIS ARRAY holds the text for our 4 states.
-        const char* modeLabels[] = { "Normal", "Repeat All", "Repeat 1", "Shuffle"};
+        const char* modeLabels[] = { "Normal", "Repeat All", "Repeat 1", "Shuffle" };
 
         // THE BUTTON physically CHANGES its text based on the current playbackMode integer.
         if (ImGui::Button(modeLabels[playbackMode], ImVec2(100, 50))) {
@@ -812,7 +762,8 @@ void Engine::Run()
         ImGui::SetCursorPos(ImVec2(70.0f, 145.0f)); // POSITION IT BELOW THE VOLUME SLIDER
 
         // [C++ Coding-while-Learning] A static char array holds the text the user types into ImGui.
-        static char folderPathBuffer[256] = "assets";
+        // UI FIX Step 4: START with an EMPTY buffer.
+        static char folderPathBuffer[256] = "";
 
         // ---------------------------------------------------------
         // BACKGROUND THREAD VARIABLES (Survives frame resets)
@@ -882,7 +833,8 @@ void Engine::Run()
 
         ImGui::PushItemWidth(300.0f);
         // THIS creates a text box where I can type any Mac folder path!
-        ImGui::InputText("##FolderPath", folderPathBuffer, sizeof(folderPathBuffer));
+        // UX FIX Step 5: Beautiful placeholder text guiding the user!
+        ImGui::InputTextWithHint("##FolderPath", "Select a music directory...", folderPathBuffer, sizeof(folderPathBuffer));
         ImGui::PopItemWidth();
 
         ImGui::SameLine(0.0f, 10.0f);
@@ -891,26 +843,23 @@ void Engine::Run()
         if (ImGui::Button("Load Folder", ImVec2(120, 0))) {
             std::string newPath = folderPathBuffer;
 
-            // 1. VALIDATE that the folder actually exists on the Mac.
-            if (fs::exists(newPath) && fs::is_directory(newPath)) {
+            // UX FIX Step 6: Smart Error Handling!
+            if (newPath.empty()) {
+                std::cout << "[ENGINE] Please select or type a folder path first!\n";
+            }
+            else if (fs::exists(newPath) && fs::is_directory(newPath)) {
                 std::cout << "[ENGINE] Scanning new folder: " << newPath << "\n";
-                // 1. Create a TEMPORARY playlist first! Do NOT use playlist.clear() here.
                 std::vector<std::string> tempPlaylist;
 
-                // 2. SCAN for Audio Files and put them in the TEMP PLAYLIST.
-                // (Your awesome .wav and .flac additions are preserved here!)
                 for (const auto &entry : fs::directory_iterator(newPath)) {
                     if (entry.path().extension() == ".mp3" || entry.path().extension() == ".MP3" || entry.path().extension() == ".wav" || entry.path().extension() == ".WAV" || entry.path().extension() == ".flac" || entry.path().extension() == ".FLAC"){
                         tempPlaylist.push_back(entry.path().string());
                     }
                 }
 
-                // [NEW FIX] SORT the files alphabetically (A-Z) so it matches Mac Finder.
                 std::sort(tempPlaylist.begin(), tempPlaylist.end());
 
-                // 3. ONLY overwrite the real playlist if we actually found music!
                 if (!tempPlaylist.empty()) {
-                    // THIS completely DELETES the old folder's music.
                     playlist = tempPlaylist;
 
                     player.Stop();
@@ -921,17 +870,18 @@ void Engine::Run()
                     player.Load(selectedTrackPath);
                     player.SetVolume(currentVolume);
                     trackDuration = player.GetDuration();
-                    player.Play(); // ??
+                    player.Play(); 
 
                     isUserPaused = false;
                     for (size_t i = 0; i < frozenFrequencies.size(); i++) {
                         frozenFrequencies[i] = 0.0f;
                     }
                 } else {
-                    std::cout << "[ ⚠ ENGINE WARNING!] No MP3s files found in the FOLDER!\n";
+                    std::cout << "[ ⚠ ENGINE WARNING!] No Audio files found in the FOLDER!\n";
                 }
             } else {
-                std::cout << "[ ⚠ ENGINE WARNING!] The folder path you entered is INVALID!\n";
+                // Now it tells you EXACTLY what path failed!
+                std::cout << "[ ⚠ ENGINE WARNING!] The folder path is INVALID: '" << newPath << "'\n";
             }
         }
 
@@ -939,7 +889,7 @@ void Engine::Run()
         ImGui::End();
 
         // ==========================================
-        // IMGUI PHASE 4: RENDER TO SCREEN
+        // IMGUI Phase 4: RENDER TO SCREEN
         // ==========================================
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -949,11 +899,10 @@ void Engine::Run()
 
         // Let TrumFaster calculate the exact sleep math instead of hardcoding it.
         trumFaster.EndFrame();
-        // std::this_thread::sleep_for(std::chrono::milliseconds(FRAME_TIME_MS)); DISABLED, DEAD CODE
     }
 
     // ==========================================
-    // IMGUI PHASE 5: CLEAN SHUTDOWN
+    // IMGUI Phase 5: CLEAN SHUTDOWN
     // ==========================================
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
