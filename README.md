@@ -7,7 +7,7 @@ Clayton Engine is a custom, hardware-accelerated C++ audio engine and real-time 
 ## 📑 Table of Contents
 
 * [Core Features](#-core-features)
-* [What's New in v0.9.0](#-whats-new-in-v090)
+* [What's New in v0.9.2](#-whats-new-in-v092)
 * [Project Structure](#-project-structure)
 * [Technical Architecture](#-technical-architecture)
 * [Building & Running](#-building--running)

@@ -24,6 +24,8 @@
 #include <cstdlib> // FOR rand(); math
 #include <ctime>
 
+#include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
+
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
 // =====================================
 // CONSTRUCTOR
@@ -79,6 +81,14 @@ void Engine::Run()
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
         return;
     }
+
+    // -----------------------------------
+    // UX FIX: MINIMUM WINDOW SIZE (Anti-Squish).
+    // -----------------------------------
+    // LOCK the minimum dimensions to 900x600.
+    // This Guarantees the 830px UI PIll NEVER GETS squished.
+    // And the visualizer always has ENOUGH room to OVERRIDE.
+    glfwSetWindowSizeLimits(window.GetGLFWWindowPointer(), 900, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
     // -----------------------------------
     // 3. CREATE a Spectrum Renderer.
@@ -178,6 +188,13 @@ void Engine::Run()
                 frozenFrequencies[i] = 0.0f;
             }
         }
+
+        // ==========================================
+        // NEW: RESPONSIVE FIX for PREVENT UI and Canvas Stretching.
+        // ==========================================
+        int fbWidth, fbHeight;
+        glfwGetFramebufferSize(window.GetGLFWWindowPointer(), &fbWidth, &fbHeight);
+        glViewport(0, 0, fbWidth, fbHeight);
 
         window.Clear(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -308,7 +325,11 @@ void Engine::Run()
         std::vector<ImVec2> mainLinePoints;
         std::vector<ImVec2> shadowLinePoints;
         std::vector<ImVec2> rawLinePoints; // NEW: Holds raw peaks for GPU Spline application.
-        float centerY = pillPosY - 180.0f; // ANCHOR above the UI PILL.
+
+        // v0.9.3 RESPONSIVE FIX: Anchor relative to the screen height, not the UI Pill!
+        // This stops the polyline from flying off the top of the window when shrunk.
+        float centerY = viewportSize.y * 0.55f;
+        // float centerY = pillPosY - 180.0f; (DISABLED, BUT ENABLED IF THAT NEW CODE IS ERROR)
 
         if (visualMode == 2){
             mainLinePoints.push_back(ImVec2(startPosX -  40.0f, centerY));

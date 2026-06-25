@@ -35,7 +35,10 @@ target_include_directories(ClaytonEngine PRIVATE
 # 5. FIND OpenGL NATIVELY on ANY OPERATING SYSTEM.
 find_package(OpenGL REQUIRED)
 
-# 6. Cross-platform Linking.
+# 6. SILENCE the compiler WARNING.
+add_compile_definitions(GL_SILENCE_DEPRECATION)
+
+# 7. Cross-platform Linking.
 if(APPLE)
     # macOS: LINK Mac Frameworks and my existing Mac GLFW library (ADDED ${CMAKE_SOURCE_DIR}/)
     target_link_libraries(ClaytonEngine PRIVATE OpenGL::GL "${CMAKE_SOURCE_DIR}/third_party/glfw/lib/libglfw3.a" "-framework Cocoa" "-framework IOKit" "-framework CoreVideo")
